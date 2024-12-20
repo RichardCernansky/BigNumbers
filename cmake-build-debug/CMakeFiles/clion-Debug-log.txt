@@ -1,0 +1,4 @@
+/Applications/CLion.app/Contents/bin/cmake/mac/aarch64/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/Applications/CLion.app/Contents/bin/ninja/mac/aarch64/ninja "-DCMAKE_CXX_FLAGS=-pedantic-errors --std=c++20 -pthread -Wall -Wextra -Wformat=2 -Wlogical-op -Wmissing-include-dirs -Wredundant-decls -Wstrict-overflow -Wundef -Wnull-dereference -Walloca -Wcast-qual -Werror=vla" -G Ninja -S /Users/richardcernansky/Desktop/APC/cvika -B /Users/richardcernansky/Desktop/APC/cvika/cmake-build-debug
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/richardcernansky/Desktop/APC/cvika/cmake-build-debug
