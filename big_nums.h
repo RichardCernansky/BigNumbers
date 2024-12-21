@@ -3,6 +3,7 @@
 #include <string>
 #include <iostream>
 #include <stdexcept>
+#include <sstream>
 
 #define UPPORT_MORE_OPS 0
 #define SSUPPORT_IFSTREAM 0
@@ -26,71 +27,29 @@ private:
         }
     }
 
-    std::pair<BigInteger, BigInteger> divide_with_remainder(const BigInteger& divisor) const {
-        if (divisor == 0) {
-            throw std::invalid_argument("Division by zero");
-        }
-
-        BigInteger dividend = *this;
-        BigInteger quotient;
-        BigInteger remainder;
-
-        BigInteger denom = divisor;
-        BigInteger current(1);
-
-        // Ensure denom is not larger than dividend initially
-        if (denom > dividend) {
-            return {BigInteger(0), dividend};
-        }
-
-        // Shift denom and current left until denom is larger than dividend
-        while (denom <= dividend) {
-            denom <<= 1;
-            current <<= 1;
-        }
-
-        // Shift denom and current back to the highest valid position
-        denom >>= 1;
-        current >>= 1;
-
-        // Perform the division using bitwise OR to accumulate the quotient
-        while (current != 0) {
-            if (dividend >= denom) {
-                dividend -= denom;
-                quotient |= current; // Accumulate the current power of two in the quotient
-            }
-            denom >>= 1;
-            current >>= 1;
-        }
-
-        remainder = dividend;
-
-        quotient.is_negative = is_negative != divisor.is_negative;
-        remainder.is_negative = is_negative;
-
-        quotient.removeLeadingZeros();
-        remainder.removeLeadingZeros();
-
-        return {quotient, remainder};
-    }
-
-
 public:
-    // Constructors
+    // constructors
     BigInteger() : is_negative(false) { digits.push_back(0); }
+
     BigInteger(int64_t n) : is_negative(n < 0) {
+        digits.clear();
+
+        if (n == 0) {
+            digits.push_back(0); // Handle zero case
+            return;
+        }
+
         if (n < 0) n = -n;
-        do {
+        while (n > 0) {
             digits.push_back(n % BASE);
             n /= BASE;
-        } while (n > 0);
+        }
     }
 
     explicit BigInteger(const std::string& str) {
         if (str.empty()) throw std::invalid_argument("Invalid input string");
 
         size_t start = 0;
-        is_negative = (str[0] == '-');
         if (str[0] == '-' || str[0] == '+') {
             start = 1;
         }
@@ -115,10 +74,10 @@ public:
             i = chunk_start;
         }
 
-        // Ensure that the number 0 has a consistent representation
+        is_negative = (str[0] == '-');
+        // ensure that the number 0 has a consistent representation
         if (digits.empty()) digits.push_back(0);
     }
-
 
     // Copy constructor and assignment operator
     BigInteger(const BigInteger& other) = default;
@@ -207,6 +166,58 @@ public:
     BigInteger& operator%=(const BigInteger& rhs) {
         *this = divide_with_remainder(rhs).second;
         return *this;
+    }
+
+    std::pair<BigInteger, BigInteger> divide_with_remainder(const BigInteger& divisor) {
+        if (divisor == 0) {
+            throw std::invalid_argument("Division by zero");
+        }
+
+        auto temp_is_negative = is_negative;
+        is_negative = false;
+
+        BigInteger dividend = *this;
+        BigInteger quotient(0);
+
+        BigInteger denom = divisor;
+        BigInteger current(1);
+
+        // Ensure denom is not larger than dividend initially
+        if (denom > dividend) {
+            return {BigInteger(0), dividend};
+        }
+
+        // Shift denom and current left until denom is larger than dividend
+        while (denom <= dividend) {
+            denom <<= 1;
+            current <<= 1;
+        }
+
+        // Shift denom and current back to the highest valid position
+        denom >>= 1;
+        current >>= 1;
+
+        // Perform the division using bitwise OR to accumulate the quotient
+        while (current != BigInteger(0)) {
+            if (dividend >= denom) {
+                dividend -= denom;
+                quotient |= current; // Accumulate the current power of two in the quotient
+            }
+            denom >>= 1;
+            current >>= 1;
+        }
+
+       BigInteger remainder = dividend;
+
+        quotient.is_negative = is_negative != divisor.is_negative;
+        remainder.is_negative = is_negative;
+
+        quotient.removeLeadingZeros();
+        remainder.removeLeadingZeros();
+
+        is_negative = temp_is_negative;
+
+        return {quotient, remainder};
     }
 
     // Spaceship operator (<=>)
@@ -304,12 +315,61 @@ public:
         return *this;
     }
 
-    // stream support
-    friend std::ostream& operator<<(std::ostream& os, const BigInteger& n) {
-        if (n.is_negative) os << '-';
-        for (size_t i = n.digits.size(); i-- > 0;) {
-            os << n.digits[i];
+    double sqrt() const {
+        if (is_negative) {
+            throw std::runtime_error("Cannot compute square root of a negative number");
         }
+
+        if (*this == 0) {
+            return 0.0;
+        }
+
+        double value = 0.0;
+        double base_multiplier = 1.0;
+
+        for (size_t i = 0; i < digits.size(); ++i) {
+            if (base_multiplier > std::numeric_limits<double>::max() / BASE) {
+                throw std::runtime_error("Number is too large to convert to double for sqrt");
+            }
+
+            value += digits[i] * base_multiplier;
+            base_multiplier *= BASE;
+        }
+
+        if (value > std::numeric_limits<double>::max()) {
+            throw std::runtime_error("Number is too large to compute sqrt in double precision");
+        }
+
+        return std::sqrt(value);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const BigInteger& n) {
+        if (n.digits.empty()) {
+            os << '0';
+            return os;
+        }
+
+        if (n.is_negative) {
+            os << '-';
+        }
+
+        BigInteger temp = n; // make a copy since we will modify it
+        std::ostringstream result;
+
+        const BigInteger ten(10); // base 10 for extraction
+        BigInteger remainder;
+        // extract digits in base 10
+        while (temp != BigInteger()) {
+            auto division_result = temp.divide_with_remainder(ten);
+            temp = division_result.first;      // quotient
+            remainder = division_result.second;// remainder
+            result << remainder.digits[0];     // store remainder (base-10 digit)
+        }
+
+        std::string reversed_result = result.str();
+        std::reverse(reversed_result.begin(), reversed_result.end());
+
+        os << reversed_result;
         return os;
     }
 
