@@ -3,35 +3,87 @@
 #include <string>
 #include <iostream>
 #include <stdexcept>
-#include <algorithm>
-#include <numeric>
-#include <sstream>
+
+#define UPPORT_MORE_OPS 0
+#define SSUPPORT_IFSTREAM 0
+#define SUPPORT_EVAL 0 // special bonus
 
 class BigInteger {
 private:
-    std::vector<int> digits; // Digits stored in reverse order
+    using BaseType = uint32_t; // Base type for digits
+    using DoubleBaseType = uint64_t; // For operations that require larger capacity
+    static constexpr BaseType BASE = BaseType(1) << (sizeof(BaseType) * 4); // Base is int/2
+
+    std::vector<BaseType> digits; // Digits stored in reverse order
     bool is_negative;
 
     void removeLeadingZeros() {
         while (digits.size() > 1 && digits.back() == 0) {
             digits.pop_back();
         }
-        if (digits.size() == 1 && digits[0] == 0) { // check for "-000"
+        if (digits.size() == 1 && digits[0] == 0) {
             is_negative = false;
         }
     }
 
-public:
-    // constructors
-    BigInteger() : is_negative(false) { digits.push_back(0); }
-
-    BigInteger(int64_t n) : is_negative(n < 0) {
-        if (n < 0) n = -n; // if n negative, make it positive for following algorithm
-        else if (n == 0) digits.push_back(0);
-        while (n > 0) {
-            digits.push_back(n % 10);
-            n /= 10;
+    std::pair<BigInteger, BigInteger> divide_with_remainder(const BigInteger& divisor) const {
+        if (divisor == 0) {
+            throw std::invalid_argument("Division by zero");
         }
+
+        BigInteger dividend = *this;
+        BigInteger quotient;
+        BigInteger remainder;
+
+        BigInteger denom = divisor;
+        BigInteger current(1);
+
+        // Ensure denom is not larger than dividend initially
+        if (denom > dividend) {
+            return {BigInteger(0), dividend};
+        }
+
+        // Shift denom and current left until denom is larger than dividend
+        while (denom <= dividend) {
+            denom <<= 1;
+            current <<= 1;
+        }
+
+        // Shift denom and current back to the highest valid position
+        denom >>= 1;
+        current >>= 1;
+
+        // Perform the division using bitwise OR to accumulate the quotient
+        while (current != 0) {
+            if (dividend >= denom) {
+                dividend -= denom;
+                quotient |= current; // Accumulate the current power of two in the quotient
+            }
+            denom >>= 1;
+            current >>= 1;
+        }
+
+        remainder = dividend;
+
+        quotient.is_negative = is_negative != divisor.is_negative;
+        remainder.is_negative = is_negative;
+
+        quotient.removeLeadingZeros();
+        remainder.removeLeadingZeros();
+
+        return {quotient, remainder};
+    }
+
+
+public:
+    // Constructors
+    BigInteger() : is_negative(false) { digits.push_back(0); }
+    BigInteger(int64_t n) : is_negative(n < 0) {
+        if (n < 0) n = -n;
+        do {
+            digits.push_back(n % BASE);
+            n /= BASE;
+        } while (n > 0);
     }
 
     explicit BigInteger(const std::string& str) {
@@ -43,42 +95,57 @@ public:
             start = 1;
         }
 
-        for (size_t i = str.size(); i > start; --i) {
-            if (!isdigit(str[i - 1])) {
-                throw std::invalid_argument("Invalid input string");
-            }
-            digits.push_back(str[i - 1] - '0');
+        digits.clear();
+
+        static constexpr size_t chunk_size = 9; // Maximum number of decimal digits that fit into BaseType
+        BigInteger base(BASE);
+
+        for (size_t i = str.size(); i > start;) {
+            size_t chunk_end = i;
+            size_t chunk_start = (i >= chunk_size) ? i - chunk_size : start;
+            std::string chunk = str.substr(chunk_start, chunk_end - chunk_start);
+
+            // convert the chunk
+            BigInteger chunk_value(std::stoll(chunk));
+
+            // Combine the chunk into the current value
+            *this *= base;
+            *this += chunk_value;
+
+            i = chunk_start;
         }
-        removeLeadingZeros();
+
+        // Ensure that the number 0 has a consistent representation
+        if (digits.empty()) digits.push_back(0);
     }
-    // copy constructor
+
+
+    // Copy constructor and assignment operator
     BigInteger(const BigInteger& other) = default;
-    // assignment operator
     BigInteger& operator=(const BigInteger& rhs) = default;
 
     // Unary operators
-    const BigInteger& operator+() const { return *this; } //no-op
-
     BigInteger operator-() const {
         BigInteger result = *this;
-        if (result != 0) { // check for zero
-            result.is_negative = !result.is_negative; // flip negativity
+        if (result != 0) {
+            result.is_negative = !result.is_negative;
         }
         return result;
     }
 
-    // Arithmetic operators:
+    // Arithmetic operators
     BigInteger& operator+=(const BigInteger& rhs) {
         if (is_negative == rhs.is_negative) {
-            int carry = 0;
+            BaseType carry = 0;
             size_t max_size = std::max(digits.size(), rhs.digits.size());
             digits.resize(max_size, 0);
 
             for (size_t i = 0; i < max_size || carry; ++i) {
                 if (i == digits.size()) digits.push_back(0);
-                digits[i] += (i < rhs.digits.size() ? rhs.digits[i] : 0) + carry;
-                carry = digits[i] / 10;
-                digits[i] %= 10;
+                DoubleBaseType sum = DoubleBaseType(digits[i]) +
+                                     (i < rhs.digits.size() ? rhs.digits[i] : 0) + carry;
+                digits[i] = sum % BASE;
+                carry = sum / BASE;
             }
         } else {
             *this -= -rhs;
@@ -90,11 +157,13 @@ public:
     BigInteger& operator-=(const BigInteger& rhs) {
         if (is_negative == rhs.is_negative) {
             if (abs() >= rhs.abs()) {
-                int borrow = 0;
+                BaseType borrow = 0;
                 for (size_t i = 0; i < rhs.digits.size() || borrow; ++i) {
-                    digits[i] -= (i < rhs.digits.size() ? rhs.digits[i] : 0) + borrow;
-                    borrow = digits[i] < 0;
-                    if (borrow) digits[i] += 10;
+                    DoubleBaseType sub = DoubleBaseType(digits[i]) -
+                                         (i < rhs.digits.size() ? rhs.digits[i] : 0) - borrow;
+                    borrow = sub >= BASE;
+                    if (borrow) sub += BASE;
+                    digits[i] = sub;
                 }
                 removeLeadingZeros();
             } else {
@@ -113,12 +182,14 @@ public:
         result.digits.resize(digits.size() + rhs.digits.size(), 0);
 
         for (size_t i = 0; i < digits.size(); ++i) {
-            int carry = 0;
+            DoubleBaseType carry = 0;
             for (size_t j = 0; j < rhs.digits.size() || carry; ++j) {
-                long long cur = result.digits[i + j] +
-                               digits[i] * (j < rhs.digits.size() ? rhs.digits[j] : 0) + carry;
-                result.digits[i + j] = cur % 10;
-                carry = cur / 10;
+                DoubleBaseType prod = result.digits[i + j] +
+                                      DoubleBaseType(digits[i]) *
+                                          (j < rhs.digits.size() ? rhs.digits[j] : 0) +
+                                      carry;
+                result.digits[i + j] = prod % BASE;
+                carry = prod / BASE;
             }
         }
 
@@ -129,80 +200,108 @@ public:
     }
 
     BigInteger& operator/=(const BigInteger& rhs) {
-        if (rhs == 0) throw std::invalid_argument("Division by zero");
-
-        BigInteger dividend = abs();
-        BigInteger divisor = rhs.abs();
-        BigInteger quotient;
-        BigInteger current;
-
-        quotient.digits.resize(dividend.digits.size(), 0);
-
-        for (size_t i = dividend.digits.size(); i-- > 0;) {
-            current.digits.insert(current.digits.begin(), dividend.digits[i]);
-            current.removeLeadingZeros();
-            int x = 0, l = 0, r = 10;
-
-            while (l <= r) {
-                int m = (l + r) / 2;
-                BigInteger t = divisor * m;
-                if (t <= current) {
-                    x = m;
-                    l = m + 1;
-                } else {
-                    r = m - 1;
-                }
-            }
-
-            quotient.digits[i] = x;
-            current -= divisor * x;
-        }
-
-        quotient.is_negative = is_negative != rhs.is_negative;
-        quotient.removeLeadingZeros();
-        *this = quotient;
+        *this = divide_with_remainder(rhs).first;
         return *this;
     }
 
     BigInteger& operator%=(const BigInteger& rhs) {
-        *this -= (*this / rhs) * rhs;
+        *this = divide_with_remainder(rhs).second;
         return *this;
     }
 
-    // Comparison operators
-    friend bool operator<(const BigInteger& lhs, const BigInteger& rhs) {
-        if (lhs.is_negative != rhs.is_negative) return lhs.is_negative;
-        if (lhs.digits.size() != rhs.digits.size()) {
-            return lhs.is_negative ? lhs.digits.size() > rhs.digits.size()
-                                   : lhs.digits.size() < rhs.digits.size();
+    // Spaceship operator (<=>)
+    std::strong_ordering operator<=>(const BigInteger& rhs) const {
+        if (is_negative != rhs.is_negative) {
+            return is_negative ? std::strong_ordering::less : std::strong_ordering::greater;
         }
-        for (size_t i = lhs.digits.size(); i-- > 0;) {
-            if (lhs.digits[i] != rhs.digits[i]) {
-                return lhs.is_negative ? lhs.digits[i] > rhs.digits[i]
-                                       : lhs.digits[i] < rhs.digits[i];
+
+        if (digits.size() != rhs.digits.size()) {
+            return (digits.size() < rhs.digits.size()) == is_negative
+                       ? std::strong_ordering::greater
+                       : std::strong_ordering::less;
+        }
+
+        for (size_t i = digits.size(); i-- > 0;) {
+            if (digits[i] != rhs.digits[i]) {
+                return (digits[i] < rhs.digits[i]) == is_negative
+                           ? std::strong_ordering::greater
+                           : std::strong_ordering::less;
             }
         }
-        return false;
+        return std::strong_ordering::equal;
     }
 
-    friend bool operator==(const BigInteger& lhs, const BigInteger& rhs) {
-        return lhs.is_negative == rhs.is_negative && lhs.digits == rhs.digits;
+    // Equality and Inequality Operators
+    bool operator==(const BigInteger& rhs) const {
+        return (*this <=> rhs) == 0; // Use the spaceship operator
     }
 
-    friend bool operator!=(const BigInteger& lhs, const BigInteger& rhs) {
-        return !(lhs == rhs);
+    bool operator!=(const BigInteger& rhs) const {
+        return !(*this == rhs); // Use the equality operator
     }
 
-    friend bool operator<=(const BigInteger& lhs, const BigInteger& rhs) {
-        return !(rhs < lhs);
+    // bitwise operators
+    BigInteger& operator<<=(size_t shift) {
+        size_t base_shifts = shift / (sizeof(BaseType) * 8); // Full base shifts
+        size_t bit_shifts = shift % (sizeof(BaseType) * 8); // Remaining bit shifts
+
+        // shift the digits vector
+        if (base_shifts > 0) {
+            digits.insert(digits.begin(), base_shifts, 0); // Insert zeros at the front
+        }
+
+        if (bit_shifts > 0) {
+            BaseType carry = 0;
+            for (size_t i = 0; i < digits.size(); ++i) {
+                DoubleBaseType shifted = (DoubleBaseType(digits[i]) << bit_shifts) | carry;
+                digits[i] = BaseType(shifted % BASE);
+                carry = BaseType(shifted / BASE);
+            }
+            if (carry > 0) {
+                digits.push_back(carry);
+            }
+        }
+
+        return *this;
     }
 
-    friend bool operator>(const BigInteger& lhs, const BigInteger& rhs) {
-        return rhs < lhs;
+    BigInteger& operator>>=(size_t shift) {
+        size_t base_shifts = shift / (sizeof(BaseType) * 8); // Full base shifts
+        size_t bit_shifts = shift % (sizeof(BaseType) * 8); // Remaining bit shifts
+
+        // Shift the digits vector
+        if (base_shifts >= digits.size()) {
+            // If the shift is greater than the size, the number becomes 0
+            digits.clear();
+            digits.push_back(0);
+            is_negative = false;
+            return *this;
+        }
+
+        digits.erase(digits.begin(), digits.begin() + base_shifts); // Remove base_shifts elements
+
+        if (bit_shifts > 0) {
+            BaseType carry = 0;
+            for (size_t i = digits.size(); i-- > 0;) {
+                DoubleBaseType shifted = (DoubleBaseType(digits[i]) | (DoubleBaseType(carry) << (sizeof(BaseType) * 8 - bit_shifts))) >> bit_shifts;
+                carry = digits[i] & ((1 << bit_shifts) - 1); // Save the remainder bits
+                digits[i] = BaseType(shifted);
+            }
+        }
+
+        removeLeadingZeros();
+        return *this;
     }
 
-    friend bool operator>=(const BigInteger& lhs, const BigInteger& rhs) {
-        return !(lhs < rhs);
+    BigInteger& operator|=(const BigInteger& rhs) {
+        size_t max_size = std::max(digits.size(), rhs.digits.size());
+        digits.resize(max_size, 0);
+
+        for (size_t i = 0; i < rhs.digits.size(); ++i) {
+            digits[i] |= rhs.digits[i];
+        }
+
+        return *this;
     }
 
     // stream support
@@ -214,81 +313,11 @@ public:
         return os;
     }
 
-    // helper method
-    BigInteger abs() const {
+    // helper methods
+    [[nodiscard]] BigInteger abs() const {
         BigInteger result = *this;
         result.is_negative = false;
         return result;
-    }
-};
-
-class BigRational {
-private:
-    BigInteger numerator;
-    BigInteger denominator;
-
-    void normalize() {
-        if (denominator < 0) {
-            numerator = -numerator;
-            denominator = -denominator;
-        }
-        BigInteger gcd = std::gcd(numerator.abs(), denominator.abs());
-        numerator /= gcd;
-        denominator /= gcd;
-    }
-
-public:
-    // Constructors
-    BigRational() : numerator(0), denominator(1) {}
-
-    BigRational(int64_t a, int64_t b) : numerator(a), denominator(b) {
-        if (b == 0) throw std::invalid_argument("Denominator cannot be zero");
-        normalize();
-    }
-
-    BigRational(const std::string& a, const std::string& b)
-        : numerator(BigInteger(a)), denominator(BigInteger(b)) {
-        if (denominator == 0) throw std::invalid_argument("Denominator cannot be zero");
-        normalize();
-    }
-
-    // Arithmetic operators
-    BigRational& operator+=(const BigRational& rhs) {
-        numerator = numerator * rhs.denominator + rhs.numerator * denominator;
-        denominator *= rhs.denominator;
-        normalize();
-        return *this;
-    }
-
-    BigRational& operator-=(const BigRational& rhs) {
-        numerator = numerator * rhs.denominator - rhs.numerator * denominator;
-        denominator *= rhs.denominator;
-        normalize();
-        return *this;
-    }
-
-    BigRational& operator*=(const BigRational& rhs) {
-        numerator *= rhs.numerator;
-        denominator *= rhs.denominator;
-        normalize();
-        return *this;
-    }
-
-    BigRational& operator/=(const BigRational& rhs) {
-        if (rhs.numerator == 0) throw std::invalid_argument("Division by zero");
-        numerator *= rhs.denominator;
-        denominator *= rhs.numerator;
-        normalize();
-        return *this;
-    }
-
-    // Stream support
-    friend std::ostream& operator<<(std::ostream& os, const BigRational& n) {
-        os << n.numerator;
-        if (n.denominator != 1) {
-            os << '/' << n.denominator;
-        }
-        return os;
     }
 };
 
@@ -315,16 +344,5 @@ inline BigInteger operator/(BigInteger lhs, const BigInteger& rhs) {
 
 inline BigInteger operator%(BigInteger lhs, const BigInteger& rhs) {
     lhs %= rhs;
-    return lhs;
-}
-
-// binary operators for BigRational
-inline BigRational operator+(BigRational lhs, const BigRational& rhs) {
-    lhs += rhs;
-    return lhs;
-}
-
-inline BigRational operator-(BigRational lhs, const BigRational& rhs) {
-    lhs -= rhs;
     return lhs;
 }
