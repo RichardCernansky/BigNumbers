@@ -52,18 +52,17 @@ public:
         }
 
         size_t start = 0;
+        is_negative = (str[0] == '-');
         if (str[0] == '-' || str[0] == '+') {
             start = 1;
         }
 
         digits.clear();
-        is_negative = (str[0] == '-');
-
-        static constexpr size_t chunk_size = 9; // Decimal digits that fit into BaseType
+        static constexpr size_t chunk_size = 9; // Maximum decimal digits that fit into BaseType
         static constexpr uint64_t decimal_base = 1000000000; // 10^chunk_size
 
         BigInteger result; // Initialize to 0
-        uint64_t power_of_ten = 1;
+        BigInteger power_of_ten(1); // Start with 10^0 = 1
 
         for (size_t i = str.size(); i > start;) {
             size_t chunk_end = i;
@@ -72,21 +71,20 @@ public:
 
             uint64_t chunk_value = std::stoull(chunk);
 
-            // Accumulate the result correctly using decimal_base
-            if (power_of_ten == 1) {
-                result += chunk_value;
-            } else {
-                BigInteger scaled_chunk(chunk_value);
-                scaled_chunk *= power_of_ten;
-                result += scaled_chunk;
-            }
+            // Convert chunk into BigInteger
+            BigInteger chunk_big(chunk_value);
 
-            power_of_ten *= decimal_base; // Scale power of ten
+            // Multiply chunk by the current power of ten and add to the result
+            chunk_big *= power_of_ten;
+            result += chunk_big;
+
+            // Update power of ten for the next chunk
+            power_of_ten *= decimal_base;
             i = chunk_start;
         }
 
-        digits = result.digits; // Copy digits to the current object
-        removeLeadingZeros();   // Ensure no leading zeros remain
+        digits = result.digits; // Copy the computed digits to this object
+        removeLeadingZeros(); // Clean up leading zeros
     }
 
     // Copy constructor and assignment operator
@@ -352,16 +350,17 @@ public:
         double base_multiplier = 1.0;
 
         for (size_t i = 0; i < digits.size(); ++i) {
+            // Check for overflow before adding to value
+            if (digits[i] > 0 && base_multiplier > std::numeric_limits<double>::max() / digits[i]) {
+                throw std::runtime_error("Number is too large to convert to double for sqrt");
+            }
+            value += digits[i] * base_multiplier;
+
+            // Check for overflow before updating base_multiplier
             if (base_multiplier > std::numeric_limits<double>::max() / BASE) {
                 throw std::runtime_error("Number is too large to convert to double for sqrt");
             }
-
-            value += digits[i] * base_multiplier;
             base_multiplier *= BASE;
-        }
-
-        if (value > std::numeric_limits<double>::max()) {
-            throw std::runtime_error("Number is too large to compute sqrt in double precision");
         }
 
         return std::sqrt(value);
