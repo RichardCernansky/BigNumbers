@@ -47,7 +47,9 @@ public:
     }
 
     explicit BigInteger(const std::string& str) {
-        if (str.empty()) throw std::invalid_argument("Invalid input string");
+        if (str.empty()) {
+            throw std::invalid_argument("Invalid input string");
+        }
 
         size_t start = 0;
         if (str[0] == '-' || str[0] == '+') {
@@ -55,28 +57,36 @@ public:
         }
 
         digits.clear();
+        is_negative = (str[0] == '-');
 
-        static constexpr size_t chunk_size = 9; // Maximum number of decimal digits that fit into BaseType
-        BigInteger base(BASE);
+        static constexpr size_t chunk_size = 9; // Decimal digits that fit into BaseType
+        static constexpr uint64_t decimal_base = 1000000000; // 10^chunk_size
+
+        BigInteger result; // Initialize to 0
+        uint64_t power_of_ten = 1;
 
         for (size_t i = str.size(); i > start;) {
             size_t chunk_end = i;
             size_t chunk_start = (i >= chunk_size) ? i - chunk_size : start;
             std::string chunk = str.substr(chunk_start, chunk_end - chunk_start);
 
-            // convert the chunk
-            BigInteger chunk_value(std::stoll(chunk));
+            uint64_t chunk_value = std::stoull(chunk);
 
-            // Combine the chunk into the current value
-            *this *= base;
-            *this += chunk_value;
+            // Accumulate the result correctly using decimal_base
+            if (power_of_ten == 1) {
+                result += chunk_value;
+            } else {
+                BigInteger scaled_chunk(chunk_value);
+                scaled_chunk *= power_of_ten;
+                result += scaled_chunk;
+            }
 
+            power_of_ten *= decimal_base; // Scale power of ten
             i = chunk_start;
         }
 
-        is_negative = (str[0] == '-');
-        // ensure that the number 0 has a consistent representation
-        if (digits.empty()) digits.push_back(0);
+        digits = result.digits; // Copy digits to the current object
+        removeLeadingZeros();   // Ensure no leading zeros remain
     }
 
     // Copy constructor and assignment operator
@@ -207,7 +217,11 @@ public:
             current >>= 1;
         }
 
-       BigInteger remainder = dividend;
+        BigInteger remainder = *this;
+        BigInteger back = divisor;
+        back *= quotient;
+        remainder -= back;
+
 
         quotient.is_negative = is_negative != divisor.is_negative;
         remainder.is_negative = is_negative;
@@ -253,8 +267,8 @@ public:
 
     // bitwise operators
     BigInteger& operator<<=(size_t shift) {
-        size_t base_shifts = shift / (sizeof(BaseType) * 8); // Full base shifts
-        size_t bit_shifts = shift % (sizeof(BaseType) * 8); // Remaining bit shifts
+        size_t base_shifts = shift / (sizeof(BaseType) * 4); // Full base shifts
+        size_t bit_shifts = shift % (sizeof(BaseType) * 4); // Remaining bit shifts
 
         // shift the digits vector
         if (base_shifts > 0) {
@@ -277,26 +291,36 @@ public:
     }
 
     BigInteger& operator>>=(size_t shift) {
-        size_t base_shifts = shift / (sizeof(BaseType) * 8); // Full base shifts
-        size_t bit_shifts = shift % (sizeof(BaseType) * 8); // Remaining bit shifts
+        size_t base_shifts = shift / (sizeof(BaseType) * 4); // Full base shifts (digits to drop)
+        size_t bit_shifts = shift % (sizeof(BaseType) * 4); // Remaining bit shifts within a digit
 
-        // Shift the digits vector
+        // Handle full base shifts
         if (base_shifts >= digits.size()) {
-            // If the shift is greater than the size, the number becomes 0
+            // If the shift is greater than or equal to the size, the number becomes 0
             digits.clear();
             digits.push_back(0);
             is_negative = false;
             return *this;
         }
 
-        digits.erase(digits.begin(), digits.begin() + base_shifts); // Remove base_shifts elements
+        // Remove the full base shifts
+        digits.erase(digits.begin(), digits.begin() + base_shifts);
 
+        // Handle remaining bit shifts
         if (bit_shifts > 0) {
             BaseType carry = 0;
             for (size_t i = digits.size(); i-- > 0;) {
-                DoubleBaseType shifted = (DoubleBaseType(digits[i]) | (DoubleBaseType(carry) << (sizeof(BaseType) * 8 - bit_shifts))) >> bit_shifts;
-                carry = digits[i] & ((1 << bit_shifts) - 1); // Save the remainder bits
-                digits[i] = BaseType(shifted);
+                // First, shift the current digit to the right
+                BaseType shifted_digit = digits[i] >> bit_shifts;
+
+                // Add the carry bits shifted into the high positions of the digit
+                shifted_digit |= (carry << (sizeof(BaseType) * 4 - bit_shifts));
+
+                // Update the carry to the lower bits of the current digit before the shift
+                carry = digits[i] & ((1 << bit_shifts) - 1);
+
+                // Store the result back in the digit
+                digits[i] = shifted_digit;
             }
         }
 

@@ -5,26 +5,26 @@ int main() {
     // try {
         // Test Constructors
         BigInteger num1(12345);
-        // BigInteger num2("12345");
-        BigInteger num3("65536");
-        // BigInteger num4(10);
+        BigInteger num2("12345");
+        BigInteger num3("665899999999999999");
+        BigInteger num4(665899999999999999);
 
-        // std::cout << "num1: " << num1 << std::endl;
-        // std::cout << "num2: " << num2 << std::endl;
+        std::cout << "num1: " << num1 << std::endl;
+        std::cout << "num2: " << num2 << std::endl;
         std::cout << "num3: " << num3 << std::endl;
-        // std::cout << "num4: " << num4 << std::endl;
+        std::cout << "num4: " << num4 << std::endl;
 
     //     // Test Addition
-    //     BigInteger sum = num1 + num3;
-    //     std::cout << "num1 + num3: " << sum << std::endl;
+    BigInteger sum = num1 + num3;
+    std::cout << "num1 + num3: " << sum << std::endl;
     //
     //     // Test Subtraction
-    //     BigInteger diff = num3 - num2;
-    //     std::cout << "num3 - num2: " << diff << std::endl;
-    //
+    BigInteger diff = num3 - num2;
+    std::cout << "num3 - num2: " << diff << std::endl;
+
     //     // Test Multiplication
-    //     BigInteger product = num1 * num3;
-    //     std::cout << "num1 * num3: " << product << std::endl;
+    BigInteger product = num1 * num3;
+    std::cout << "num1 * num3: " << product << std::endl;
     //
     //     // Test Division
     // BigInteger quotient = num1 / num4;
