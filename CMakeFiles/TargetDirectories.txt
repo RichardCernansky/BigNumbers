@@ -1,0 +1,3 @@
+/Users/richardcernansky/Desktop/APC/cvika/CMakeFiles/big_nums.dir
+/Users/richardcernansky/Desktop/APC/cvika/CMakeFiles/edit_cache.dir
+/Users/richardcernansky/Desktop/APC/cvika/CMakeFiles/rebuild_cache.dir
