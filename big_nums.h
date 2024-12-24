@@ -487,16 +487,15 @@ inline std::ostream& operator<<(std::ostream& os, const BigInteger& n)
 
 
     const uint64_t INTERNAL_BASE = BigInteger::BASE;  // e.g. 2^16, 2^15, etc.
-    static constexpr uint64_t DECIMAL_BASE = 1000000000000000000ULL; // 10^18
-
+    const uint64_t DECIMAL_BASE  = 1000000000ULL;     // 10^9
 
     std::vector<uint32_t> base10_digits;  // store decimal chunks
     BigInteger temp = n.abs();            // local copy of absolute value
 
+    // 4) Repeatedly divide temp by 10^9, collect the remainder as a chunk
     while (temp != BigInteger(0))
     {
         auto [q, r] = temp.divide_with_remainder(BigInteger((int64_t)DECIMAL_BASE));
-
         temp = q; // new quotient
 
         uint64_t remainderVal = 0;
@@ -552,7 +551,7 @@ private:
     BigInteger numerator_;
     BigInteger denominator_; // always kept > 0 (unless numerator is 0)
 
-    // Reduce fraction to canonical form
+    // reduce fraction to canonical form
     void reduce()
     {
         if (numerator_ == 0) {
@@ -622,7 +621,6 @@ public:
     // ----------------------------------------------------
     BigRational& operator+=(const BigRational& rhs)
     {
-        // a/b + c/d = (ad + bc) / (bd)
         BigInteger a = numerator_;
         BigInteger b = denominator_;
         BigInteger c = rhs.numerator_;
@@ -636,7 +634,6 @@ public:
 
     BigRational& operator-=(const BigRational& rhs)
     {
-        // a/b - c/d = (ad - bc) / (bd)
         BigInteger a = numerator_;
         BigInteger b = denominator_;
         BigInteger c = rhs.numerator_;
