@@ -152,13 +152,11 @@ private:
 
         BigInteger remainder = dividend;
 
-        quotient.is_negative = is_negative != divisor.is_negative;
+        quotient.is_negative = temp_is_negative;
         remainder.is_negative = is_negative;
 
         quotient.removeLeadingZeros();
         remainder.removeLeadingZeros();
-
-        is_negative = temp_is_negative;
 
         return {quotient, remainder};
     }
@@ -555,20 +553,22 @@ private:
     void reduce()
     {
         if (numerator_ == 0) {
-            // 0/anything => 0/1
+            // If numerator is zero, the rational number is 0/1
             denominator_ = BigInteger(1);
             return;
         }
 
+        // Find the greatest common divisor (GCD) of the numerator and denominator
         BigInteger g = big_gcd(numerator_, denominator_);
 
-        numerator_   /= g;
+        // Divide numerator and denominator by GCD to simplify the fraction
+        numerator_ /= g;
         denominator_ /= g;
 
-        // Keep denominator positive
+        // Ensure the denominator is positive
         if (denominator_ < 0) {
             denominator_ = -denominator_;
-            numerator_   = -numerator_;
+            numerator_ = -numerator_; // Flip the sign of the numerator to preserve the sign
         }
     }
 
@@ -677,7 +677,7 @@ public:
         // if negative => error
         // if 0 => 0
         // else => double(numerator)/double(denominator), then std::sqrt
-        if (numerator_ < 0) {
+        if (numerator_ < 0 || denominator_ < 0) {
             throw std::runtime_error("Cannot take sqrt of negative fraction");
         }
         if (numerator_ == 0) {
