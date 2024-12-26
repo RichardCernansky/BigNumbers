@@ -7,9 +7,10 @@
 #include <cmath>
 #include <iomanip>
 #include <cctype>
+#include <random>
 
-#define UPPORT_MORE_OPS 0
-#define SSUPPORT_IFSTREAM 0
+#define SUPPORT_MORE_OPS 1
+#define SUPPORT_IFSTREAM 1
 #define SUPPORT_EVAL 0 // special bonus
 
 class BigInteger {
@@ -29,6 +30,35 @@ private:
             is_negative = false;
         }
     }
+
+    // Helper function: Generate random BigInteger in range [low, high]
+    static BigInteger random(const BigInteger& low, const BigInteger& high) {
+        if (low >= high) {
+            throw std::invalid_argument("Invalid range for random number generation");
+        }
+        BigInteger range = high - low + 1;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<uint64_t> dis(0, UINT64_MAX);
+        BigInteger random_val = BigInteger(dis(gen)) % range;
+        return low + random_val;
+    }
+    BigInteger pow_mod(const BigInteger& exp, const BigInteger& mod) const {
+        BigInteger result(1);
+        BigInteger base = *this % mod;
+        BigInteger exponent = exp;
+
+        while (exponent > 0) {
+            if (exponent % 2 == 1) {
+                result = (result * base) % mod;
+            }
+            base = (base * base) % mod;
+            exponent /= 2;
+        }
+
+        return result;
+    }
+
 
     // helper methods
     [[nodiscard]] BigInteger abs() const {
@@ -166,6 +196,12 @@ private:
     friend bool operator==(const BigInteger& lhs, const BigInteger& rhs);
     friend bool operator!=(const BigInteger& lhs, const BigInteger& rhs);
     friend std::ostream& operator<<(std::ostream& os, const BigInteger& n);
+    friend std::istream& operator>>(std::istream& lhs, BigInteger& rhs);
+    friend BigInteger operator%(BigInteger lhs, const BigInteger& rhs);
+    friend BigInteger operator*(BigInteger lhs, const BigInteger& rhs);
+    friend BigInteger operator+(BigInteger lhs, const BigInteger& rhs);
+    friend BigInteger operator-(BigInteger lhs, const BigInteger& rhs);
+    friend BigInteger operator/(BigInteger lhs, const BigInteger& rhs);
 
 public:
     // constructors
@@ -413,8 +449,89 @@ public:
         // 5. Compute sqrt
         return std::sqrt(value);
     }
+#if SUPPORT_MORE_OPS == 1
+    BigInteger isqrt() const {
+        if (*this < 0) {
+            throw std::invalid_argument("Cannot compute square root of a negative number.");
+        }
 
+        BigInteger low(0), high = *this, mid, result;
 
+        // Binary search for the integer square root
+        while (low <= high) {
+            mid = (low + high) / 2;
+            BigInteger mid_squared = mid * mid;
+
+            if (mid_squared == *this) {
+                return mid; // Exact square root
+            }
+            if (mid_squared < *this) {
+                result = mid; // Update result to the largest mid such that mid^2 <= x
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return result;
+    }
+    // Primality test: is_prime()
+    bool is_prime(int k = 10) const {
+        // Handle corner cases
+        if (*this <= 1 || *this == 4) {
+            return false; // 0, 1, and 4 are not prime
+        }
+        if (*this <= 3) {
+            return true; // 2 and 3 are prime
+        }
+
+        BigInteger n = *this;
+
+        // Find d such that n-1 = 2^r * d, where d is odd
+        BigInteger n_minus_1 = n - 1;
+        BigInteger d = n_minus_1;
+        int r = 0;
+
+        while (d % 2 == 0) {
+            d /= 2;
+            r++;
+        }
+
+        // Miller-Rabin Test (k iterations)
+        for (int i = 0; i < k; i++) {
+            // Pick a random number in [2, n-2]
+            BigInteger a = BigInteger::random(2, n - 2);
+
+            // Compute a^d % n
+            BigInteger x = a.pow_mod(d, n);
+
+            // Check if x is 1 or n-1
+            if (x == 1 || x == n_minus_1) {
+                continue; // This round passed
+            }
+
+            // Square x and check if it becomes n-1
+            bool passed = false;
+            for (int j = 1; j < r; j++) {
+                x = (x * x) % n;
+
+                if (x == n_minus_1) {
+                    passed = true;
+                    break;
+                }
+
+                if (x == 1) {
+                    return false; // Composite
+                }
+            }
+
+            if (!passed) {
+                return false; // Composite
+            }
+        }
+
+        return true; // Probably prime
+    }
+#endif
 };
 
 // binary operators for BigInteger
@@ -517,6 +634,42 @@ inline std::ostream& operator<<(std::ostream& os, const BigInteger& n)
     return os;
 }
 
+#if SUPPORT_IFSTREAM == 1
+// Operator >> implementation for BigInteger
+inline std::istream& operator>>(std::istream& lhs, BigInteger& rhs) {
+    rhs = BigInteger(0);
+
+    lhs >> std::ws;
+
+    bool is_negative = false;
+    if (lhs.peek() == '-') {
+        is_negative = true;
+        lhs.get();
+    } else if (lhs.peek() == '+') {
+        lhs.get();
+    }
+
+    std::string digits;
+    while (std::isdigit(lhs.peek())) {
+        digits += static_cast<char>(lhs.get());
+    }
+
+    if (digits.empty()) {
+        lhs.setstate(std::ios::failbit);
+        return lhs;
+    }
+
+    try {
+        rhs = BigInteger(digits);
+        rhs.is_negative = is_negative;
+    } catch (const std::invalid_argument&) {
+        lhs.setstate(std::ios::failbit);
+    }
+
+    return lhs;
+}
+#endif
+
 
 // ===================================================================
 // ========================= BigRational =============================
@@ -572,6 +725,13 @@ private:
         }
     }
 
+    BigRational(const BigInteger& numerator, const BigInteger& denominator)
+    : numerator_(numerator), denominator_(denominator) {
+        if (denominator == 0) {
+            throw std::invalid_argument("Denominator cannot be zero.");
+        }
+        reduce(); // Ensure the fraction is in its canonical form
+    }
 public:
     // ----------------------------------------------------
     // constructors
@@ -710,12 +870,33 @@ public:
         return std::sqrt(fractionVal);
     }
 
+#if SUPPORT_MORE_OPS == 1
+    BigInteger isqrt() const {
+        if (*this < BigRational()) {
+            throw std::invalid_argument("Cannot compute square root of a negative rational number.");
+        }
+
+        // Convert the rational number to a single BigInteger
+        BigInteger scaled_numerator = numerator_ * denominator_; // Scale numerator to avoid precision loss
+        BigInteger sqrt_result = scaled_numerator.isqrt();       // Compute integer square root
+
+        return sqrt_result / denominator_; // Truncate the integer square root
+    }
+#endif
+
     // friend declarations for comparison operators
     friend bool operator==(const BigRational& lhs, const BigRational& rhs);
     friend bool operator<(const BigRational& lhs, const BigRational& rhs);
 
     // stream output
     friend std::ostream& operator<<(std::ostream& os, const BigRational& r);
+    friend BigRational operator+(BigRational lhs, const BigRational& rhs);
+    friend BigRational operator-(BigRational lhs, const BigRational& rhs);
+    friend BigRational operator*(BigRational lhs, const BigRational& rhs);
+    friend BigRational operator/(BigRational lhs, const BigRational& rhs);
+    friend BigRational operator%(BigRational lhs, const BigRational& rhs);
+    friend std::istream& operator>>(std::istream& lhs, BigRational& rhs);
+
 };
 
 // non-member binary operators for BigRational
@@ -775,7 +956,7 @@ inline bool operator>=(const BigRational& lhs, const BigRational& rhs)
 }
 
 // stream output
-// ff denominator == 1 => just print numerator.
+// if denominator == 1 => just print numerator.
 // otherwise => "numerator/denominator" with no spaces.
 inline std::ostream& operator<<(std::ostream& os, const BigRational& r)
 {
@@ -786,3 +967,49 @@ inline std::ostream& operator<<(std::ostream& os, const BigRational& r)
     }
     return os;
 }
+
+#if SUPPORT_IFSTREAM == 1
+inline std::istream& operator>>(std::istream& lhs, BigRational& rhs) {
+    lhs >> std::ws;
+
+    BigInteger numerator(0);
+    BigInteger denominator(1);
+
+    bool is_negative = false;
+    if (lhs.peek() == '-') {
+        is_negative = true;
+        lhs.get();
+    }
+
+    if (!(lhs >> numerator)) {
+        lhs.setstate(std::ios::failbit);
+        return lhs;
+    }
+
+    if (is_negative) {
+        numerator = -numerator;
+    }
+
+    lhs >> std::ws;
+
+    if (lhs.peek() == '/') {
+        lhs.get();
+
+        lhs >> std::ws;
+
+        if (!(lhs >> denominator)) {
+            lhs.setstate(std::ios::failbit);
+            return lhs;
+        }
+
+        if (denominator == BigInteger(0)) {
+            lhs.setstate(std::ios::failbit);
+            return lhs;
+        }
+    }
+
+    rhs = BigRational(numerator, denominator);
+
+    return lhs;
+}
+#endif

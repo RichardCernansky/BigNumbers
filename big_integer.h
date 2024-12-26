@@ -17,6 +17,19 @@ private:
     using BaseType = uint32_t; // Base type for digits
     using DoubleBaseType = uint64_t; // For operations that require larger capacity
     static constexpr BaseType BASE = BaseType(1) << (sizeof(BaseType) * 4); // Base is int/2
+    static constexpr uint64_t DECIMAL_BASE = 1000000000ULL; // 10^9
+    static std::vector<BigInteger> precomputedPowersOf10;
+
+    static void initializePowersOf10(size_t maxChunks) {
+        if (!precomputedPowersOf10.empty()) return; // Already initialized
+
+        precomputedPowersOf10.push_back(BigInteger(1)); // 10^0 = 1
+        for (size_t i = 1; i <= maxChunks; ++i) {
+            auto new_power = precomputedPowersOf10.back();
+            new_power *= DECIMAL_BASE;
+            precomputedPowersOf10.push_back(new_power);
+        }
+    }
 
     std::vector<BaseType> digits; // Digits stored in reverse order
     bool is_negative;
@@ -472,8 +485,7 @@ inline bool operator!=(const BigInteger& lhs, const BigInteger& rhs) {
     return !(lhs == rhs); // Use the equality operator
 }
 
-inline std::ostream& operator<<(std::ostream& os, const BigInteger& n)
-{
+inline std::ostream& operator<<(std::ostream& os, const BigInteger& n) {
     if (n.digits.empty() || (n.digits.size() == 1 && n.digits[0] == 0)) {
         os << '0';
         return os;
@@ -483,33 +495,27 @@ inline std::ostream& operator<<(std::ostream& os, const BigInteger& n)
         os << '-';
     }
 
+    // Ensure powers of 10 are precomputed
+    constexpr size_t MAX_CHUNKS = 100; // Adjust based on expected size
+    BigInteger::initializePowersOf10(MAX_CHUNKS);
 
-    const uint64_t INTERNAL_BASE = BigInteger::BASE;  // e.g. 2^16, 2^15, etc.
-    const uint64_t DECIMAL_BASE  = 1000000000ULL;     // 10^9
+    BigInteger temp = n.abs();
+    std::vector<uint32_t> base10_digits;
 
-    std::vector<uint32_t> base10_digits;  // store decimal chunks
-    BigInteger temp = n.abs();            // local copy of absolute value
+    while (temp != BigInteger(0)) {
+        // Use precomputed power of 10 for division
+        const BigInteger& powerOf10 = BigInteger::precomputedPowersOf10[1]; // 10^9
+        auto [quotient, remainder] = temp.divide_with_remainder(powerOf10);
 
-    // 4) Repeatedly divide temp by 10^9, collect the remainder as a chunk
-    while (temp != BigInteger(0))
-    {
-        auto [q, r] = temp.divide_with_remainder(BigInteger((int64_t)DECIMAL_BASE));
-        temp = q; // new quotient
-
-        uint64_t remainderVal = 0;
-        uint64_t factor = 1;
-        for (size_t i = 0; i < r.digits.size(); ++i) {
-            remainderVal += (uint64_t)r.digits[i] * factor;
-            factor *= INTERNAL_BASE;
-        }
-
-        base10_digits.push_back((uint32_t)remainderVal);
+        base10_digits.push_back(static_cast<uint32_t>(remainder.toUint64()));
+        temp = quotient;
     }
 
-
+    // Output the highest chunk without leading zeros
     auto it = base10_digits.rbegin();
-    os << *it++;  // print the top chunk normally (no padding)
+    os << *it++;
 
+    // Output the remaining chunks with zero-padding
     while (it != base10_digits.rend()) {
         os << std::setw(9) << std::setfill('0') << *it++;
     }

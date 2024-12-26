@@ -1,48 +1,50 @@
 #include <iostream>
 #include <fstream>
 #include <chrono> // For measuring time
-#include "big_integer.h"
+#include "big_nums.h"
+
+#include <iostream>
+#include <vector>
+#include <set>
+
+// Assuming BigInteger is already defined and includes the is_prime method.
+
+#include <iostream>
+#include <vector>
+
+// Assuming BigInteger is already implemented and includes the is_prime method.
 
 int main() {
-    // Start measuring time
-    auto start = std::chrono::high_resolution_clock::now();
+    // Precomputed list of all primes up to 200
+    std::vector<int> primes_up_to_200 = {
+        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61,
+        67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137,
+        139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199
+    };
 
-    // Your existing code
-    std::ifstream inFile("bigNum.txt");
-    std::string largeNumber;
-    std::getline(inFile, largeNumber);
-    inFile.close();
+    // Convert the vector of primes into a set for quick lookup
+    std::set<int> prime_set(primes_up_to_200.begin(), primes_up_to_200.end());
 
-    // Construct the BigInteger from the file-loaded string
-    BigInteger numFile(largeNumber);
-    BigInteger num1(123);
-    BigInteger num2("-0");
-    BigInteger num3("6658999999999999999999999999999999999999999999999999999999999999999999999999999999999000888590423848943890401980942340925809848943890401980942340925884894389040198094234092588489438904019809423409258000000055555555");
-    BigInteger num4("-999999999999999999999999999");
+    // Iterate through all numbers from 2 to 200 and test primality
+    for (int n = 2; n <= 200; n++) {
+        BigInteger num(n);
+        bool result = num.is_prime();
+        bool expected = (prime_set.find(n) != prime_set.end()); // Check if `n` is in the list of primes
 
-    // Print numbers
-    std::cout << "numFile: " << numFile << std::endl;
-    std::cout << "num1: " << num1 << std::endl;
-    std::cout << "num2: " << -(-num2) << std::endl;
-    std::cout << "num3: " << num3 << std::endl;
-    std::cout << "num4: " << num4 << std::endl;
+        // Print test results
+        std::cout << "Testing " << n << ": "
+                  << (result ? "PRIME" : "NOT PRIME")
+                  << " (Expected: " << (expected ? "PRIME" : "NOT PRIME") << ")\n";
 
-    // Test Addition
-    BigInteger sum = num1 + num2;
-    std::cout << "num4 + num1: " << sum << std::endl;
+        // Check if the test passed
+        if (result != expected) {
+            std::cerr << "Test failed for number: " << n << std::endl;
+            return 1; // Exit with error
+        }
+    }
 
-    // Test Subtraction
-    BigInteger diff = num1 - num2;
-    std::cout << "num1 - num4: " << diff << std::endl;
-
-    // End measuring time
-    auto end = std::chrono::high_resolution_clock::now();
-
-    // Calculate duration
-    std::chrono::duration<double> elapsed = end - start;
-
-    // Print execution time
-    std::cout << "Execution time: " << elapsed.count() << " seconds" << std::endl;
-
+    std::cout << "All tests passed successfully for primes up to 200!\n";
     return 0;
 }
+
+
