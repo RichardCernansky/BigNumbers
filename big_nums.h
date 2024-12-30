@@ -9,9 +9,9 @@
 #include <cctype>
 #include <random>
 
-#define SUPPORT_MORE_OPS 1
-#define SUPPORT_IFSTREAM 1
-#define SUPPORT_EVAL 0 // special bonus
+#define SUPPORT_MORE_OPS 0
+#define SUPPORT_IFSTREAM 0
+#define SUPPORT_EVAL 1 // special bonus
 
 class BigInteger {
 private:
@@ -1013,3 +1013,211 @@ inline std::istream& operator>>(std::istream& lhs, BigRational& rhs) {
     return lhs;
 }
 #endif
+
+#if SUPPORT_EVAL == 1
+// exception class for parsing errors
+class ParseException : public std::runtime_error {
+public:
+    ParseException(const std::string& message) : std::runtime_error(message) {}
+};
+
+// helper function to skip whitespace
+inline void skip_whitespace(const std::string& str, size_t& pos) {
+    while (pos < str.size() && std::isspace(static_cast<unsigned char>(str[pos]))) {
+        pos++;
+    }
+}
+
+// helper function to parse a JSON string (enclosed in double quotes)
+inline std::string parse_string(const std::string& str, size_t& pos) {
+    if (str[pos] != '"') {
+        throw ParseException("Expected '\"' at position " + std::to_string(pos));
+    }
+    pos++;
+    std::string result;
+    while (pos < str.size()) {
+        char current = str[pos];
+        if (current == '\\') {
+            pos++;
+            if (pos >= str.size()) {
+                throw ParseException("Unexpected end of string after escape character");
+            }
+            char escape_char = str[pos];
+            switch (escape_char) {
+                case '"': result += '"'; break;
+                case '\\': result += '\\'; break;
+                case '/': result += '/'; break;
+                case 'b': result += '\b'; break;
+                case 'f': result += '\f'; break;
+                case 'n': result += '\n'; break;
+                case 'r': result += '\r'; break;
+                case 't': result += '\t'; break;
+                default:
+                    throw ParseException(std::string("Invalid escape character: \\") + escape_char);
+            }
+        }
+        else if (current == '"') {
+            pos++;
+            return result;
+        }
+        else {
+            result += current;
+        }
+        pos++;
+    }
+    throw ParseException("Unterminated string starting at position " + std::to_string(pos));
+}
+
+// helper function to parse a JSON number (as double, then truncate to integer)
+inline BigInteger parse_number(const std::string& str, size_t& pos) {
+    size_t start = pos;
+    bool has_decimal = false;
+    bool is_negative = false;
+    if (str[pos] == '-') {
+        is_negative = true;
+        pos++;
+    }
+    if (pos >= str.size() || !std::isdigit(static_cast<unsigned char>(str[pos]))) {
+        throw ParseException("Invalid number format at position " + std::to_string(pos));
+    }
+    while (pos < str.size() && (std::isdigit(static_cast<unsigned char>(str[pos])) || str[pos] == '.')) {
+        if (str[pos] == '.') {
+            if (has_decimal) {
+                throw ParseException("Multiple decimal points in number at position " + std::to_string(pos));
+            }
+            has_decimal = true;
+        }
+        pos++;
+    }
+    std::string num_str = str.substr(start, pos - start);
+    double num_double = std::stod(num_str);
+    long long num_long = static_cast<long long>(std::floor(std::abs(num_double)));
+    BigInteger num = BigInteger(num_long);
+    if (is_negative) {
+        num = -num;
+    }
+    return num;
+}
+
+// forward declaration of eval_expression
+inline BigInteger eval_expression(const std::string& str, size_t& pos);
+
+// helper function to parse a JSON value (string, number, or object)
+inline BigInteger parse_value(const std::string& str, size_t& pos) {
+    skip_whitespace(str, pos);
+    if (pos >= str.size()) {
+        throw ParseException("Unexpected end of input while parsing value");
+    }
+    if (str[pos] == '"') {
+        std::string s = parse_string(str, pos);
+        return BigInteger(s);
+    }
+    else if (str[pos] == '{') {
+        return eval_expression(str, pos);
+    }
+    else if (std::isdigit(static_cast<unsigned char>(str[pos])) || str[pos] == '-') {
+        return parse_number(str, pos);
+    }
+    else {
+        throw ParseException(std::string("Unexpected character '") + str[pos] + "' at position " + std::to_string(pos));
+    }
+}
+
+// function to evaluate an expression represented as a JSON object
+inline BigInteger eval_expression(const std::string& str, size_t& pos) {
+    skip_whitespace(str, pos);
+    if (str[pos] != '{') {
+        throw ParseException("Expected '{' at position " + std::to_string(pos));
+    }
+    pos++;
+    std::string op;
+    BigInteger left, right;
+    bool op_set = false, left_set = false, right_set = false;
+    while (true) {
+        skip_whitespace(str, pos);
+        if (pos >= str.size()) {
+            throw ParseException("Unexpected end of input while parsing object");
+        }
+        if (str[pos] == '}') {
+            pos++;
+            break;
+        }
+        std::string key = parse_string(str, pos);
+        skip_whitespace(str, pos);
+        if (pos >= str.size() || str[pos] != ':') {
+            throw ParseException("Expected ':' after key at position " + std::to_string(pos));
+        }
+        pos++;
+        skip_whitespace(str, pos);
+        if (key == "op") {
+            op = parse_string(str, pos);
+            op_set = true;
+        }
+        else if (key == "left") {
+            left = parse_value(str, pos);
+            left_set = true;
+        }
+        else if (key == "right") {
+            right = parse_value(str, pos);
+            right_set = true;
+        }
+        else {
+            throw ParseException("Unexpected key '" + key + "' at position " + std::to_string(pos));
+        }
+        skip_whitespace(str, pos);
+        if (pos >= str.size()) {
+            throw ParseException("Unexpected end of input while parsing object");
+        }
+        if (str[pos] == ',') {
+            pos++;
+            continue;
+        }
+        else if (str[pos] == '}') {
+            pos++;
+            break;
+        }
+        else {
+            throw ParseException("Expected ',' or '}' at position " + std::to_string(pos));
+        }
+    }
+    if (!op_set || !left_set || !right_set) {
+        throw ParseException("Missing one of 'op', 'left', or 'right' in object");
+    }
+    if (op == "+") {
+        return left + right;
+    }
+    else if (op == "-") {
+        return left - right;
+    }
+    else if (op == "*") {
+        return left * right;
+    }
+    else if (op == "/") {
+        if (right == BigInteger(0)) {
+            throw std::runtime_error("Division by zero");
+        }
+        return left / right;
+    }
+    else if (op == "%") {
+        if (right == BigInteger(0)) {
+            throw std::runtime_error("Modulus by zero");
+        }
+        return left % right;
+    }
+    else {
+        throw ParseException("Unsupported operator '" + op + "'");
+    }
+}
+
+// the main eval function
+inline BigInteger eval(const std::string& json) {
+    size_t pos = 0;
+    BigInteger result = eval_expression(json, pos);
+    skip_whitespace(json, pos);
+    if (pos != json.size()) {
+        throw ParseException("Unexpected characters after end of expression");
+    }
+    return result;
+}
+
+#endif // SUPPORT_EVAL == 1

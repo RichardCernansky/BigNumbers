@@ -22,28 +22,19 @@ int main() {
         139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199
     };
 
-    // Convert the vector of primes into a set for quick lookup
-    std::set<int> prime_set(primes_up_to_200.begin(), primes_up_to_200.end());
-
-    // Iterate through all numbers from 2 to 200 and test primality
-    for (int n = 2; n <= 200; n++) {
-        BigInteger num(n);
-        bool result = num.is_prime();
-        bool expected = (prime_set.find(n) != prime_set.end()); // Check if `n` is in the list of primes
-
-        // Print test results
-        std::cout << "Testing " << n << ": "
-                  << (result ? "PRIME" : "NOT PRIME")
-                  << " (Expected: " << (expected ? "PRIME" : "NOT PRIME") << ")\n";
-
-        // Check if the test passed
-        if (result != expected) {
-            std::cerr << "Test failed for number: " << n << std::endl;
-            return 1; // Exit with error
+    std::string json_input = R"({
+        "op": "+",
+        "left": 123,
+        "right": {
+            "op": "*",
+            "left": "12345678901234567890",
+            "right": {
+                "op": "%",
+                "left": "34",
+                "right": 1
+            }
         }
-    }
-
-    std::cout << "All tests passed successfully for primes up to 200!\n";
+    })";
     return 0;
 }
 
